@@ -538,6 +538,7 @@ export function App() {
   const [outfits, setOutfits] = useState([]);
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
+  const [activeOutfitModal, setActiveOutfitModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -639,7 +640,12 @@ export function App() {
         {activeType === "outfits" ? (
           <section className="gallery-grid" aria-label="Outfits">
             {outfits.map((outfit) => (
-              <article key={outfit.id} className="item-card" style={{ cursor: "default" }}>
+              <article
+                key={outfit.id}
+                className="item-card"
+                style={{ cursor: "pointer" }}
+                onClick={() => setActiveOutfitModal(outfit)}
+              >
                 <div className="item-card-media" style={{ background: "#222" }}>
                   <img
                     src={`/api/import/${outfit.image}`}
@@ -672,6 +678,82 @@ export function App() {
       </main>
 
       {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} />}
+      {activeOutfitModal && (
+        <div
+          className="viewer-backdrop"
+          onClick={() => setActiveOutfitModal(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.85)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "relative",
+              maxWidth: "min(92vw, 820px)",
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              background: "#16181d",
+              borderRadius: "16px",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              overflow: "hidden",
+              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.8)",
+            }}
+          >
+            <div style={{ position: "relative", background: "#0d0f12", flex: "1 1 auto", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+              <img
+                src={`/api/import/${activeOutfitModal.image}`}
+                alt={activeOutfitModal.name}
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "75vh",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setActiveOutfitModal(null)}
+                style={{
+                  position: "absolute",
+                  top: "16px",
+                  right: "16px",
+                  background: "rgba(0, 0, 0, 0.65)",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  color: "#fff",
+                  borderRadius: "50%",
+                  width: "36px",
+                  height: "36px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+              >
+                <X size={20} weight="bold" />
+              </button>
+            </div>
+            <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px" }}>
+                <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#f4f0e8" }}>{activeOutfitModal.name}</h2>
+                <span style={{ fontSize: "0.8rem", color: "#8a909a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  {(activeOutfitModal.occasion || []).join(" • ")}
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: "0.9rem", color: "#b4b9c2", lineHeight: 1.45 }}>{activeOutfitModal.reason}</p>
+            </div>
+          </div>
+        </div>
+      )}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
