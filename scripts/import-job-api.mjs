@@ -461,7 +461,7 @@ async function codexEdit({ token, acctId, prompt, images, size }) {
     }],
     tools: [{
       type: "image_generation",
-      model: "gpt-image-2",
+      model: "gpt-image-2.5",
       size: size || "1024x1024",
       quality: "high",
       output_format: "png",
