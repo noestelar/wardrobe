@@ -8,6 +8,7 @@ const DELETED_STORAGE_KEY = "open-wardrobe-deleted-v1";
 
 const TYPES = [
   { id: "all", label: "All" },
+  { id: "outfits", label: "Outfits", singular: "Outfit" },
   { id: "upperbody", label: "Tops", singular: "Top" },
   { id: "wholebody_up", label: "Jackets", singular: "Jacket" },
   { id: "lowerbody", label: "Bottoms", singular: "Bottom" },
@@ -534,22 +535,23 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
 
 export function App() {
   const [items, setItems] = useState([]);
+  const [outfits, setOutfits] = useState([]);
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/import/wardrobe", { cache: "no-store" })
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not load the wardrobe.");
-        return response.json();
-      })
-      .then((loadedItems) => {
+    Promise.all([
+      fetch("/api/import/wardrobe", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      fetch("/api/import/outfits", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ outfits: [] })),
+    ])
+      .then(([loadedItems, loadedOutfits]) => {
         const edits = readEdits();
         const deleted = readDeletedItems();
         const visibleItems = loadedItems.filter((item) => !deleted.has(item.id));
         setItems(visibleItems.map((item) => ({ ...item, ...(edits[item.id] || {}) })));
+        setOutfits(loadedOutfits?.outfits || []);
       })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
@@ -558,6 +560,7 @@ export function App() {
   const selectedItem = items.find((item) => item.id === selectedId) || null;
 
   const visibleItems = useMemo(() => {
+    if (activeType === "outfits") return [];
     const filtered = activeType === "all" ? items : items.filter((item) => item.part === activeType);
     return [...filtered].sort((a, b) => {
       if (activeType === "all") {
@@ -608,7 +611,11 @@ export function App() {
       <main className="gallery-pane">
         <header className="gallery-header">
           <div className="gallery-meta-row">
-            <p className="piece-count">{items.length} {items.length === 1 ? "piece" : "pieces"}</p>
+            <p className="piece-count">
+              {activeType === "outfits"
+                ? `${outfits.length} ${outfits.length === 1 ? "outfit look" : "outfit looks"}`
+                : `${items.length} ${items.length === 1 ? "piece" : "pieces"}`}
+            </p>
           </div>
           <nav className="category-nav" aria-label="Filter wardrobe by item type">
             {TYPES.map((type) => (
@@ -629,17 +636,38 @@ export function App() {
         {!error && loading && <p className="status">Loading wardrobe</p>}
         {!error && !loading && !items.length && <p className="status empty">Drop, paste, or add a photo to import your first piece.</p>}
 
-        {!!items.length && (
-          <section className="gallery-grid" aria-label={`${TYPE_MAP[activeType]?.label || "All"} wardrobe items`}>
-            {visibleItems.map((item) => (
-              <GalleryItem
-                key={item.id}
-                item={item}
-                selected={selectedId === item.id}
-                onOpen={setSelectedId}
-              />
+        {activeType === "outfits" ? (
+          <section className="gallery-grid" aria-label="Outfits">
+            {outfits.map((outfit) => (
+              <article key={outfit.id} className="item-card" style={{ cursor: "default" }}>
+                <div className="item-card-media" style={{ background: "#222" }}>
+                  <img
+                    src={`/api/import/${outfit.image}`}
+                    alt={outfit.name}
+                    loading="lazy"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+                <div className="item-card-meta">
+                  <h3>{outfit.name}</h3>
+                  <p>{outfit.reason || (outfit.occasion || []).join(", ")}</p>
+                </div>
+              </article>
             ))}
           </section>
+        ) : (
+          !!items.length && (
+            <section className="gallery-grid" aria-label={`${TYPE_MAP[activeType]?.label || "All"} wardrobe items`}>
+              {visibleItems.map((item) => (
+                <GalleryItem
+                  key={item.id}
+                  item={item}
+                  selected={selectedId === item.id}
+                  onOpen={setSelectedId}
+                />
+              ))}
+            </section>
+          )
         )}
       </main>
 

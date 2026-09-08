@@ -711,6 +711,22 @@ export function wardrobeImportApi(options = {}) {
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         return res.end(await readFile(file));
       }
+      const outfitAssetMatch = url.pathname.match(/^\/api\/import\/outfit-images\/([\w.-]+)$/i);
+      if (outfitAssetMatch && req.method === "GET") {
+        const file = path.join(root, "data", "outfit-images", path.basename(outfitAssetMatch[1]));
+        await stat(file);
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.end(await readFile(file));
+      }
+      if (url.pathname === "/api/import/outfits" && req.method === "GET") {
+        try {
+          const raw = await readFile(path.join(root, "data", "outfits.json"), "utf8");
+          return json(res, 200, JSON.parse(raw));
+        } catch (err) {
+          return json(res, 200, { outfits: [] });
+        }
+      }
       const assetMatch = url.pathname.match(/^\/api\/import\/assets\/([a-f0-9-]{36})\/([\w.-]+)$/i);
       if (assetMatch && req.method === "GET") {
         const file = path.join(jobsDir, assetMatch[1], path.basename(assetMatch[2]));
