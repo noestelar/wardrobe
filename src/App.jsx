@@ -742,7 +742,7 @@ export function App() {
                 <X size={20} weight="bold" />
               </button>
             </div>
-            <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", maxHeight: "35vh" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px" }}>
                 <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#f4f0e8" }}>{activeOutfitModal.name}</h2>
                 <span style={{ fontSize: "0.8rem", color: "#8a909a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -750,6 +750,42 @@ export function App() {
                 </span>
               </div>
               <p style={{ margin: 0, fontSize: "0.9rem", color: "#b4b9c2", lineHeight: 1.45 }}>{activeOutfitModal.reason}</p>
+
+              {Array.isArray(activeOutfitModal.garmentIds) && activeOutfitModal.garmentIds.length > 0 && (
+                <div style={{ marginTop: "4px", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "12px" }}>
+                  <span style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#8a909a", display: "block", marginBottom: "8px" }}>
+                    Pieces in this look ({activeOutfitModal.garmentIds.length})
+                  </span>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    {activeOutfitModal.garmentIds.map((gid) => {
+                      const piece = items.find((i) => i.id === gid);
+                      if (!piece) return null;
+                      return (
+                        <div
+                          key={gid}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.08)",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                          }}
+                        >
+                          <div style={{ width: "32px", height: "32px", background: "#1c1e24", borderRadius: "6px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <img src={piece.image} alt={piece.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "#f4f0e8" }}>{piece.name}</span>
+                            <span style={{ fontSize: "0.72rem", color: "#8a909a", textTransform: "capitalize" }}>{TYPE_MAP[piece.part]?.singular || piece.part}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
