@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: "0.0.0.0",
-      allowedHosts: ["terminal.local"],
+      allowedHosts: ["terminal.local", "localhost", "127.0.0.1", ".tailce9ba7.ts.net", "noestelar.tailce9ba7.ts.net"],
       warmup: {
         clientFiles: ["./src/main.jsx"],
       },
