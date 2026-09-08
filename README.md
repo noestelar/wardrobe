@@ -70,7 +70,7 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 
 ### Multiple identity references
 
-Keep the original reference at `data/model-reference.png`. Add additional PNG, JPEG, or WebP photos to `data/model-references/`. The importer and virtual try-on can rotate through them automatically; a specific reference can also be selected in the try-on dialog. Keep the photos local and use consistent, full-body, well-lit images with different natural poses.
+Keep the original reference at `data/model-reference.png`. Add additional PNG, JPEG, or WebP photos from **Add photos** in the try-on dialog (they are stored locally under `data/model-references/`). The importer and virtual try-on can rotate through them automatically; a specific reference can also be selected in the try-on dialog. Keep the photos local and use consistent, full-body, well-lit images with different natural poses.
 
 ### Try before you buy
 

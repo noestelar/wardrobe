@@ -971,6 +971,22 @@ button { font: inherit; }
 .try-on-field select:focus-visible { border-color: var(--ink); outline: 2px solid var(--accent); outline-offset: 1px; }
 .try-on-field select:disabled { color: var(--muted); }
 
+.try-on-reference-manager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+.try-on-reference-manager > div { display: grid; gap: 5px; min-width: 0; }
+.try-on-reference-manager span { color: var(--ink); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+.try-on-reference-manager small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.try-on-reference-upload { position: relative; flex: 0 0 auto; }
+.try-on-reference-upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.try-on-reference-upload input:disabled { cursor: wait; }
+
 .try-on-note { margin: -2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .try-on-note code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
 .try-on-error { margin: -8px 0 0; color: var(--accent); font-size: 13px; line-height: 1.4; }
@@ -1002,6 +1018,8 @@ button { font: inherit; }
   .try-on-fields { grid-template-columns: 1fr; gap: 13px; }
   .try-on-upload { min-height: 155px; }
   .try-on-upload img { height: 220px; }
+  .try-on-reference-manager { align-items: stretch; flex-direction: column; }
+  .try-on-reference-upload { width: 100%; }
   .try-on-actions { justify-content: stretch; }
   .try-on-actions > button { flex: 1; }
   .try-on-result-details { padding: 22px 20px max(24px, env(safe-area-inset-bottom)); }

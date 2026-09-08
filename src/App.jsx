@@ -545,6 +545,15 @@ const TRY_ON_ROLE_LABELS = {
   "shoes-or-accessory": "Shoes / accessory",
 };
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read that image."));
+    reader.onerror = () => reject(new Error("Could not read that image."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function TryOnModal({ items, onClose }) {
   const [candidateName, setCandidateName] = useState("");
   const [candidateImage, setCandidateImage] = useState("");
@@ -556,6 +565,7 @@ function TryOnModal({ items, onClose }) {
   const [references, setReferences] = useState([]);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [referenceUploadBusy, setReferenceUploadBusy] = useState(false);
   const [error, setError] = useState("");
 
   const tops = useMemo(() => items.filter((item) => item.part === "upperbody" && !itemLooksLikeOuter(item)), [items]);
@@ -608,6 +618,30 @@ function TryOnModal({ items, onClose }) {
     reader.onload = () => setCandidateImage(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => setError("Could not read that image.");
     reader.readAsDataURL(file);
+  };
+
+  const handleReferenceUpload = async (event) => {
+    const files = [...(event.target.files || [])].filter((file) => file.type.startsWith("image/"));
+    event.target.value = "";
+    if (!files.length) return;
+    setReferenceUploadBusy(true);
+    setError("");
+    try {
+      for (const file of files) {
+        const response = await fetch("/api/import/model-references", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageDataUrl: await readFileAsDataUrl(file) }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Could not add ${file.name}.`);
+        if (Array.isArray(payload.modelReferences)) setReferences(payload.modelReferences);
+      }
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setReferenceUploadBusy(false);
+    }
   };
 
   const submit = async (event) => {
@@ -729,7 +763,18 @@ function TryOnModal({ items, onClose }) {
               </label>
             </div>
 
-            <p className="try-on-note">The candidate image is used only for this visualization and is not added to your wardrobe automatically. Add more identity photos to <code>data/model-references/</code> to vary poses across results; the original <code>data/model-reference.png</code> remains the fallback.</p>
+            <div className="try-on-reference-manager">
+              <div>
+                <span>Identity references</span>
+                <small>{references.length ? `${references.length} available — auto-rotate varies pose and framing.` : "Add one or more full-body photos to vary pose and framing."}</small>
+              </div>
+              <label className="secondary-button try-on-reference-upload">
+                {referenceUploadBusy ? "Adding…" : "Add photos"}
+                <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={handleReferenceUpload} disabled={busy || referenceUploadBusy} />
+              </label>
+            </div>
+
+            <p className="try-on-note">The candidate image is used only for this visualization and is not added to your wardrobe automatically. Keep identity references local: use full-body, well-lit photos with different natural poses. Daily outfit photos should be uploaded through the normal wardrobe import so their garments enter the catalog.</p>
             {error && <p className="try-on-error" role="alert">{error}</p>}
             <div className="try-on-actions">
               <button className="secondary-button" type="button" onClick={onClose} disabled={busy}>Cancel</button>

@@ -85,7 +85,7 @@ async function normalizeImage(bytes) {
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
-async function listModelReferencePaths(root, configuredReference) {
+async function listModelReferencePaths(root, configuredReference, referencesDirectory = null) {
   const paths = [];
   const primary = path.resolve(root, configuredReference || "data/model-reference.png");
   try {
@@ -94,7 +94,7 @@ async function listModelReferencePaths(root, configuredReference) {
     if (error.code !== "ENOENT") throw error;
   }
 
-  const directory = path.resolve(root, MODEL_REFERENCES_DIR);
+  const directory = referencesDirectory || path.resolve(root, MODEL_REFERENCES_DIR);
   try {
     const entries = await readdir(directory, { withFileTypes: true });
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -600,6 +600,7 @@ export function wardrobeImportApi(options = {}) {
   let importedFile;
   let libraryAssetDir;
   let tryOnDir;
+  let modelReferencesDir;
   const running = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
   const apiBaseUrl = () => setting("OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
@@ -609,7 +610,7 @@ export function wardrobeImportApi(options = {}) {
     const hasCodexAuth = Boolean(codexAuth?.token);
     const hasApiKey = Boolean(setting("OPENAI_API_KEY").trim()) || hasCodexAuth;
     const referenceSetting = setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png");
-    const referencePaths = await listModelReferencePaths(root, referenceSetting);
+    const referencePaths = await listModelReferencePaths(root, referenceSetting, modelReferencesDir);
     const hasModelReference = referencePaths.length > 0;
     return {
       ready: hasApiKey && hasModelReference,
@@ -666,7 +667,7 @@ export function wardrobeImportApi(options = {}) {
     }
 
     const requestId = randomUUID();
-    const referencePaths = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"));
+    const referencePaths = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"), modelReferencesDir);
     const referenceSelector = input.referenceIndex === "auto" || input.referenceIndex === "" ? null : input.referenceIndex;
     const referencePath = selectModelReference(referencePaths, referenceSelector, requestId);
     if (!referencePath) throw Object.assign(new Error("No model reference images found"), { status: 503 });
@@ -775,7 +776,7 @@ export function wardrobeImportApi(options = {}) {
             : `garment-${current.stages.garment.attempts}.png`;
           const garmentFile = path.join(dir, garmentName);
           const garment = { data: await readFile(garmentFile), mime: "image/png", name: "garment.png" };
-          const modelReferences = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"));
+          const modelReferences = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"), modelReferencesDir);
           const modelPath = selectModelReference(modelReferences, null, current.id);
           if (!modelPath) throw new Error("No model reference images found. Add data/model-reference.png or images to data/model-references/.");
           let modelData;
@@ -825,6 +826,20 @@ export function wardrobeImportApi(options = {}) {
       }
       if (url.pathname === "/api/import/config" && req.method === "GET") {
         return json(res, 200, await setupStatus());
+      }
+      if (url.pathname === "/api/import/model-references" && req.method === "POST") {
+        const input = await body(req);
+        const image = decodeImage(input);
+        const normalized = await normalizeImage(image.data);
+        const filename = `reference-${randomUUID()}.png`;
+        await mkdir(modelReferencesDir, { recursive: true });
+        await writeFile(path.join(modelReferencesDir, filename), normalized);
+        const referencePaths = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"), modelReferencesDir);
+        const created = path.join(modelReferencesDir, filename);
+        return json(res, 201, {
+          reference: { index: referencePaths.indexOf(created), name: relativeModelReference(root, created) },
+          modelReferences: referencePaths.map((file, index) => ({ index, name: relativeModelReference(root, file) })),
+        });
       }
       if (url.pathname === TRY_ON_ROOT && req.method === "POST") {
         const input = await body(req);
@@ -1032,7 +1047,7 @@ export function wardrobeImportApi(options = {}) {
     async configResolved(config) {
       root = config.root;
       const dataDir = path.resolve(root, setting("WARDROBE_DATA_DIR", "data"));
-      const modelReferencesDir = path.resolve(root, MODEL_REFERENCES_DIR);
+      modelReferencesDir = path.join(dataDir, "model-references");
       jobsDir = path.join(dataDir, "jobs");
       importedFile = path.join(dataDir, "library.json");
       libraryAssetDir = path.join(dataDir, "imported");
