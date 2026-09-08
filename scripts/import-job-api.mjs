@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import sharp from "sharp";
 
 const API_ROOT = "/api/import/jobs";
@@ -296,6 +297,184 @@ function stageState() {
   return { status: "pending", decision: null, attempts: 0, assetUrl: null, failedAssetUrl: null, cleanupPreviewUrl: null, cleanupTolerance: 46, cleanupDiagnostics: null, error: null, prompt: null, updatedAt: null };
 }
 
+async function getCodexAuth() {
+  try {
+    const authPath = path.join(os.homedir(), ".codex", "auth.json");
+    const raw = await readFile(authPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const token = parsed?.tokens?.access_token;
+    if (!token || typeof token !== "string") return null;
+
+    let acctId = null;
+    try {
+      const parts = token.split(".");
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+        acctId = payload?.["https://api.openai.com/auth"]?.chatgpt_account_id || null;
+      }
+    } catch {}
+
+    return { token, acctId };
+  } catch {
+    return null;
+  }
+}
+
+async function codexResponsesStream({ token, acctId, payload }) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "User-Agent": "HermesAgent/1.0.0",
+    originator: "hermes-agent",
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  if (acctId) headers["ChatGPT-Account-ID"] = acctId;
+
+  const response = await fetch("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`Codex backend request failed (${response.status}): ${errText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let imageBase64 = null;
+  let outputText = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data: ")) continue;
+      const dataStr = line.slice(6).trim();
+      if (dataStr === "[DONE]") break;
+      try {
+        const ev = JSON.parse(dataStr);
+        if (ev.type === "response.output_text.delta") {
+          outputText += ev.delta || "";
+        } else if (ev.type === "response.output_item.done" && ev.item?.type === "image_generation_call") {
+          if (ev.item.result) imageBase64 = ev.item.result;
+        }
+      } catch {}
+    }
+  }
+
+  return { imageBase64, outputText };
+}
+
+async function codexAnalyze({ token, acctId, image, mime }) {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      items: {
+        type: "array",
+        minItems: 0,
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"] },
+            color: { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" },
+            secondaryColor: { anyOf: [{ type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, { type: "null" }] },
+            tags: { type: "array", items: { type: "string" }, maxItems: 4 },
+            boundingBox: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                x: { type: "integer", minimum: 0, maximum: 999 },
+                y: { type: "integer", minimum: 0, maximum: 999 },
+                width: { type: "integer", minimum: 1, maximum: 1000 },
+                height: { type: "integer", minimum: 1, maximum: 1000 },
+              },
+              required: ["x", "y", "width", "height"],
+            },
+          },
+          required: ["name", "part", "color", "secondaryColor", "tags", "boundingBox"],
+        },
+      },
+    },
+    required: ["items"],
+  };
+
+  const payload = {
+    model: "gpt-5.5",
+    store: false,
+    stream: true,
+    input: [{
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary hex color, optional genuinely distinct secondary hex color, and 1-4 useful lowercase detail tags." },
+        { type: "input_image", image_url: `data:${mime};base64,${image.toString("base64")}` },
+      ],
+    }],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "wardrobe_items",
+        strict: true,
+        schema,
+      },
+    },
+  };
+
+  const { outputText } = await codexResponsesStream({ token, acctId, payload });
+  if (!outputText) throw new Error("Codex analysis returned no structured result");
+  const parsed = JSON.parse(outputText);
+  if (!Array.isArray(parsed.items)) throw new Error("Codex analysis returned an invalid clothing list");
+  return parsed.items;
+}
+
+async function codexEdit({ token, acctId, prompt, images, size }) {
+  const content = [{ type: "input_text", text: prompt }];
+  for (const image of images) {
+    const normalized = await normalizeImage(image.data);
+    content.push({
+      type: "input_image",
+      image_url: `data:image/png;base64,${normalized.toString("base64")}`,
+    });
+  }
+
+  const payload = {
+    model: "gpt-5.5",
+    store: false,
+    stream: true,
+    instructions: "You are an assistant that must fulfill image generation and image editing requests by using the image_generation tool when provided.",
+    input: [{
+      type: "message",
+      role: "user",
+      content,
+    }],
+    tools: [{
+      type: "image_generation",
+      model: "gpt-image-2",
+      size: size || "1024x1024",
+      quality: "high",
+      output_format: "png",
+      background: "opaque",
+      partial_images: 0,
+    }],
+  };
+
+  const { imageBase64 } = await codexResponsesStream({ token, acctId, payload });
+  if (!imageBase64) throw new Error("Codex response did not contain image data");
+  return Buffer.from(imageBase64, "base64");
+}
+
 async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   form.set("model", model);
@@ -350,7 +529,9 @@ export function wardrobeImportApi(options = {}) {
   const apiBaseUrl = () => setting("OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
 
   async function setupStatus() {
-    const hasApiKey = Boolean(setting("OPENAI_API_KEY").trim());
+    const codexAuth = await getCodexAuth();
+    const hasCodexAuth = Boolean(codexAuth?.token);
+    const hasApiKey = Boolean(setting("OPENAI_API_KEY").trim()) || hasCodexAuth;
     const referenceSetting = setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png");
     const referencePath = path.resolve(root, referenceSetting);
     let hasModelReference = false;
@@ -362,6 +543,7 @@ export function wardrobeImportApi(options = {}) {
     return {
       ready: hasApiKey && hasModelReference,
       hasApiKey,
+      hasCodexAuth,
       hasModelReference,
       modelReference: referenceSetting,
     };
@@ -435,14 +617,20 @@ export function wardrobeImportApi(options = {}) {
         const dir = path.join(jobsDir, current.id);
         const output = path.join(dir, `${stageName}-${stage.attempts}.png`);
         const key = setting("OPENAI_API_KEY");
-        if (!key) throw new Error("OPENAI_API_KEY is not configured");
+        const codexAuth = await getCodexAuth();
+        if (!key && !codexAuth?.token) throw new Error("Neither OPENAI_API_KEY nor Codex auth is configured");
         const sourceFile = stageName === "garment" && current.internal.cropFile ? current.internal.cropFile : current.internal.originalFile;
         const original = { data: await readFile(path.join(dir, sourceFile)), mime: "image/png", name: sourceFile };
         let bytes;
         if (stageName === "garment") {
           chromaKeyUsed = chooseChromaKey(current.metadata.color);
           const basePrompt = options.garmentPrompt || buildGarmentPrompt(current.metadata, chromaKeyUsed);
-          bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1024x1024", images: [original], prompt: current.stages.garment.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.garment.prompt}` : basePrompt });
+          const prompt = current.stages.garment.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.garment.prompt}` : basePrompt;
+          if (codexAuth?.token && !key) {
+            bytes = await codexEdit({ token: codexAuth.token, acctId: codexAuth.acctId, prompt, images: [original], size: "1024x1024" });
+          } else {
+            bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1024x1024", images: [original], prompt });
+          }
           const rawName = `${stageName}-${stage.attempts}-source.png`;
           await writeFile(path.join(dir, rawName), bytes);
           failedAssetUrl = `${ASSET_ROOT}/${current.id}/${rawName}`;
@@ -463,7 +651,12 @@ export function wardrobeImportApi(options = {}) {
           }
           const model = { data: modelData, mime: "image/png", name: "model.png" };
           const basePrompt = options.modeledPrompt || "Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.";
-          bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1536x1024", images: [model, garment], prompt: current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt });
+          const prompt = current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt;
+          if (codexAuth?.token && !key) {
+            bytes = await codexEdit({ token: codexAuth.token, acctId: codexAuth.acctId, prompt, images: [model, garment], size: "1536x1024" });
+          } else {
+            bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1536x1024", images: [model, garment], prompt });
+          }
         }
         await writeFile(output, bytes);
         const fresh = await loadJob(current.id);
@@ -530,7 +723,7 @@ export function wardrobeImportApi(options = {}) {
         const setup = await setupStatus();
         if (!setup.ready) {
           const missing = [
-            !setup.hasApiKey && "OPENAI_API_KEY in .env",
+            !setup.hasApiKey && "OPENAI_API_KEY in .env (or Codex login at ~/.codex/auth.json)",
             !setup.hasModelReference && `a PNG photo of yourself at ${setup.modelReference}`,
           ].filter(Boolean).join(" and ");
           return json(res, 503, { error: `Setup required: add ${missing}, then restart the app.` });
@@ -539,7 +732,14 @@ export function wardrobeImportApi(options = {}) {
         const image = decodeImage(input);
         const normalizedImage = await normalizeImage(image.data);
         const key = setting("OPENAI_API_KEY");
-        const detected = (await openAIAnalyze({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_VISION_MODEL", "gpt-5.4-mini"), image: normalizedImage, mime: "image/png" })).map(normalizeMetadata);
+        const codexAuth = await getCodexAuth();
+        let rawItems;
+        if (codexAuth?.token && !key) {
+          rawItems = await codexAnalyze({ token: codexAuth.token, acctId: codexAuth.acctId, image: normalizedImage, mime: "image/png" });
+        } else {
+          rawItems = await openAIAnalyze({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_VISION_MODEL", "gpt-5.4-mini"), image: normalizedImage, mime: "image/png" });
+        }
+        const detected = rawItems.map(normalizeMetadata);
         const jobs = [];
         for (const metadata of detected) {
           const id = randomUUID();
