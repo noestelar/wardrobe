@@ -25,7 +25,7 @@ cp .env.example .env
 npm run dev
 ```
 
-⚠️ The importer stays disabled until you add `OPENAI_API_KEY` to `.env` and place a PNG reference photo of yourself at `data/model-reference.png`.
+⚠️ The importer stays disabled until you add `OPENAI_API_KEY` to `.env` or log in with Codex, and place a PNG reference photo of yourself at `data/model-reference.png` (or add references under `data/model-references/`).
 
 Open [localhost:5173](http://localhost:5173).
 
@@ -38,7 +38,7 @@ $import-clothes Import the clothes from ~/Pictures/outfits, create modeled photo
 $generate-outfits Create modeled outfit ideas from my wardrobe.
 ```
 
-Open the cloned repo in Codex and run either prompt. The import skill asks for a local model-reference PNG when needed, reviews every cutout and modeled photo, then writes to `data/library.json` and `data/imported/`. The outfit skill asks how many looks to create, then curates, generates, verifies, and saves the complete collection under `data/`.
+Open the cloned repo in Codex and run either prompt. The import skill asks for local model-reference images when needed, reviews every cutout and modeled photo, then writes to `data/library.json` and `data/imported/`. The outfit skill asks how many looks to create, rotates through the available identity references, then curates, generates, verifies, and saves the complete collection under `data/`.
 
 ### For agents
 
@@ -52,6 +52,8 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 - Detects every garment in a photo with the OpenAI Responses API
 - Extracts clean product cutouts with the OpenAI Images API
 - Generates an optional modeled editorial preview
+- Lets you try a prospective garment against your identity reference and selected wardrobe pieces before buying
+- Rotates across multiple local identity references in `data/model-references/` to vary poses and framing
 - Keeps originals, jobs, generated images, and the JSON database local in `data/`
 - Supports drag, drop, paste, editing, review, regeneration, and approval
 
@@ -59,12 +61,20 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 
 | Variable | Default |
 | --- | --- |
-| `OPENAI_API_KEY` | Required |
+| `OPENAI_API_KEY` | Required unless Codex auth is available |
 | `OPENAI_VISION_MODEL` | `gpt-5.4-mini` |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-2` |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2.5` |
 | `OPENAI_IMAGE_QUALITY` | `high` |
 | `WARDROBE_MODEL_REFERENCE` | `data/model-reference.png` |
 | `WARDROBE_DATA_DIR` | `data` |
+
+### Multiple identity references
+
+Keep the original reference at `data/model-reference.png`. Add additional PNG, JPEG, or WebP photos to `data/model-references/`. The importer and virtual try-on can rotate through them automatically; a specific reference can also be selected in the try-on dialog. Keep the photos local and use consistent, full-body, well-lit images with different natural poses.
+
+### Try before you buy
+
+Use **Try before you buy** in the web UI to upload a store screenshot or garment photo, choose its role, select the wardrobe pieces that should complete the look, and generate a local visualization. The candidate image is not imported into the wardrobe automatically.
 
 ## License
 

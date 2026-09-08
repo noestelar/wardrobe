@@ -833,6 +833,194 @@ button { font: inherit; }
   .has-modeled-image .viewer-details.editing { padding-inline: 30px; }
 }
 
+.try-on-launch {
+  min-height: 36px;
+  border: 1px solid var(--ink);
+  padding: 9px 13px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.try-on-launch:hover,
+.try-on-launch:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent);
+  outline: none;
+}
+
+.try-on-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(25, 24, 22, .58);
+  backdrop-filter: blur(5px);
+  animation: overlay-in 180ms ease-out both;
+}
+
+.try-on-modal {
+  width: min(760px, 100%);
+  max-height: min(880px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 28px 80px rgba(25, 24, 22, .22);
+  animation: viewer-in 220ms cubic-bezier(.22, .8, .22, 1) both;
+}
+
+.try-on-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 30px 34px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.try-on-eyebrow,
+.try-on-result-kicker {
+  margin: 0 0 9px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.try-on-header h2 {
+  margin: 0;
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 500;
+  letter-spacing: -.035em;
+}
+
+.try-on-header p:not(.try-on-eyebrow) {
+  max-width: 540px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.try-on-close {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.try-on-close:hover:not(:disabled),
+.try-on-close:focus-visible:not(:disabled) {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.try-on-close:disabled { opacity: .45; cursor: wait; }
+
+.try-on-form { display: grid; gap: 22px; padding: 28px 34px 32px; }
+
+.try-on-upload {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  background: rgba(25, 25, 25, .025);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.try-on-upload:hover,
+.try-on-upload:focus-within {
+  border-color: var(--accent);
+  background: rgba(110, 48, 46, .04);
+}
+
+.try-on-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.try-on-upload img { width: 100%; height: 270px; object-fit: contain; }
+.try-on-upload-placeholder { display: grid; gap: 8px; padding: 36px; text-align: center; }
+.try-on-upload-placeholder strong { font-size: 17px; font-weight: 560; }
+.try-on-upload-placeholder small { color: var(--muted); font-size: 13px; }
+
+.try-on-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.try-on-field { display: grid; gap: 8px; }
+.try-on-field span { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.try-on-field select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  padding: 9px 11px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+}
+.try-on-field select:focus-visible { border-color: var(--ink); outline: 2px solid var(--accent); outline-offset: 1px; }
+.try-on-field select:disabled { color: var(--muted); }
+
+.try-on-note { margin: -2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.try-on-note code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
+.try-on-error { margin: -8px 0 0; color: var(--accent); font-size: 13px; line-height: 1.4; }
+.try-on-actions,
+.try-on-result-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
+
+.try-on-result-view { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(220px, .75fr); gap: 0; }
+.try-on-result-image-wrap { min-height: 430px; display: grid; place-items: center; background: #e2ddd4; }
+.try-on-result-image { width: 100%; max-height: 620px; display: block; object-fit: contain; }
+.try-on-result-details { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 28px; }
+.try-on-result-details h3 { margin: 0 0 8px; font-size: 20px; font-weight: 520; overflow-wrap: anywhere; }
+.try-on-result-details p:not(.try-on-result-kicker) { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.try-on-result-details strong { color: var(--ink); font-weight: 600; }
+.try-on-result-actions { flex-wrap: wrap; justify-content: flex-start; margin-top: 14px; }
+
+@media (max-width: 860px) {
+  .try-on-header { padding-inline: 26px; }
+  .try-on-form { padding-inline: 26px; }
+  .try-on-result-view { grid-template-columns: 1fr; }
+  .try-on-result-image-wrap { min-height: 320px; }
+}
+
+@media (max-width: 520px) {
+  .try-on-overlay { padding: 0; place-items: stretch; }
+  .try-on-modal { width: 100%; max-height: 100dvh; border-width: 0; }
+  .try-on-header { padding: max(24px, env(safe-area-inset-top)) 20px 20px; }
+  .try-on-header h2 { font-size: 27px; }
+  .try-on-form { gap: 18px; padding: 20px 20px max(24px, env(safe-area-inset-bottom)); }
+  .try-on-fields { grid-template-columns: 1fr; gap: 13px; }
+  .try-on-upload { min-height: 155px; }
+  .try-on-upload img { height: 220px; }
+  .try-on-actions { justify-content: stretch; }
+  .try-on-actions > button { flex: 1; }
+  .try-on-result-details { padding: 22px 20px max(24px, env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .try-on-overlay,
+  .try-on-modal { animation: none; }
+}
+
+@media (min-width: 521px) {
+  .gallery-meta-row { align-items: center; }
+}
+
+@media (max-width: 520px) {
+  .gallery-meta-row { flex-wrap: wrap; }
+  .try-on-launch { width: 100%; }
+}
+
 @media (max-width: 860px) {
   .gallery-header { padding: 38px 24px 0; }
   .category-nav { width: 100%; margin: 38px 0 0; }

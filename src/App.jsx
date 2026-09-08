@@ -533,12 +533,222 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
   );
 }
 
+function itemLooksLikeOuter(item) {
+  const text = `${item.name || ""} ${(item.tags || []).join(" ")}`.toLowerCase();
+  return /jacket|bomber|windbreaker|puffer|coat|parka/.test(text);
+}
+
+const TRY_ON_ROLE_LABELS = {
+  top: "Top / shirt",
+  bottom: "Bottom / trousers",
+  "outer-layer": "Outer layer / jacket",
+  "shoes-or-accessory": "Shoes / accessory",
+};
+
+function TryOnModal({ items, onClose }) {
+  const [candidateName, setCandidateName] = useState("");
+  const [candidateImage, setCandidateImage] = useState("");
+  const [role, setRole] = useState("top");
+  const [baseTopId, setBaseTopId] = useState("");
+  const [baseBottomId, setBaseBottomId] = useState("");
+  const [baseOuterId, setBaseOuterId] = useState("");
+  const [referenceIndex, setReferenceIndex] = useState("auto");
+  const [references, setReferences] = useState([]);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const tops = useMemo(() => items.filter((item) => item.part === "upperbody" && !itemLooksLikeOuter(item)), [items]);
+  const bottoms = useMemo(() => items.filter((item) => item.part === "lowerbody"), [items]);
+  const outerLayers = useMemo(() => items.filter((item) => itemLooksLikeOuter(item)), [items]);
+  const everydayBottoms = useMemo(() => bottoms.filter((item) => !/short/i.test(item.name || "")), [bottoms]);
+
+  useEffect(() => {
+    fetch("/api/import/config", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : { modelReferences: [] })
+      .then((config) => setReferences(Array.isArray(config.modelReferences) ? config.modelReferences : []))
+      .catch(() => setReferences([]));
+  }, []);
+
+  useEffect(() => {
+    if (!baseTopId && tops[0]) setBaseTopId(tops[0].id);
+    if (!baseBottomId && (everydayBottoms[0] || bottoms[0])) setBaseBottomId((everydayBottoms[0] || bottoms[0]).id);
+  }, [baseTopId, baseBottomId, bottoms, everydayBottoms, tops]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onClose]);
+
+  const selectedBaseIds = useMemo(() => {
+    const ids = [];
+    if (role !== "top" && baseTopId) ids.push(baseTopId);
+    if (role !== "bottom" && baseBottomId) ids.push(baseBottomId);
+    if (role !== "outer-layer" && baseOuterId) ids.push(baseOuterId);
+    return [...new Set(ids)];
+  }, [baseBottomId, baseOuterId, baseTopId, role]);
+
+  const requiredBaseMissing = (role === "top" && !baseBottomId)
+    || (role === "bottom" && !baseTopId)
+    || (["outer-layer", "shoes-or-accessory"].includes(role) && (!baseTopId || !baseBottomId));
+
+  const handleCandidate = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Choose an image file.");
+      return;
+    }
+    setCandidateName(file.name);
+    setError("");
+    const reader = new FileReader();
+    reader.onload = () => setCandidateImage(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => setError("Could not read that image.");
+    reader.readAsDataURL(file);
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!candidateImage) {
+      setError("Upload a product screenshot or a photo of the item first.");
+      return;
+    }
+    if (requiredBaseMissing) {
+      setError("Choose the existing wardrobe pieces that should complete the look.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setResult(null);
+    try {
+      const response = await fetch("/api/import/try-on", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageDataUrl: candidateImage,
+          role,
+          baseItemIds: selectedBaseIds,
+          referenceIndex,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `Try-on failed (${response.status})`);
+      setResult(payload);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = () => {
+    setCandidateName("");
+    setCandidateImage("");
+    setResult(null);
+    setError("");
+  };
+
+  return (
+    <div className="try-on-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <section className="try-on-modal" role="dialog" aria-modal="true" aria-labelledby="try-on-title">
+        <header className="try-on-header">
+          <div>
+            <p className="try-on-eyebrow">Purchase decision</p>
+            <h2 id="try-on-title">Try before you buy</h2>
+            <p>Upload a product screenshot or garment photo and see it on you with pieces you already own.</p>
+          </div>
+          <button className="try-on-close" type="button" onClick={onClose} disabled={busy} aria-label="Close try-on">
+            <X size={20} />
+          </button>
+        </header>
+
+        {result ? (
+          <div className="try-on-result-view">
+            <div className="try-on-result-image-wrap">
+              <img src={result.image} alt="Virtual try-on result" className="try-on-result-image" />
+            </div>
+            <div className="try-on-result-details">
+              <p className="try-on-result-kicker">Virtual try-on ready</p>
+              <h3>{candidateName || "Candidate item"}</h3>
+              <p>Reference used: <strong>{result.reference}</strong></p>
+              {!!result.baseItems?.length && <p>Paired with: {result.baseItems.map((item) => item.name).join(" · ")}</p>}
+              <div className="try-on-result-actions">
+                <button className="secondary-button" type="button" onClick={reset}>Try another item</button>
+                <button className="primary-button" type="button" onClick={onClose}>Done</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <form className="try-on-form" onSubmit={submit}>
+            <label className={`try-on-upload${candidateImage ? " has-image" : ""}`}>
+              {candidateImage ? <img src={candidateImage} alt="Candidate item preview" /> : <span className="try-on-upload-placeholder"><strong>+ Upload candidate item</strong><small>Product screenshot, store photo, or a photo of the garment</small></span>}
+              <input type="file" accept="image/*" onChange={handleCandidate} disabled={busy} />
+            </label>
+
+            <div className="try-on-fields">
+              <label className="try-on-field">
+                <span>What are you trying?</span>
+                <select value={role} onChange={(event) => setRole(event.target.value)} disabled={busy}>
+                  {Object.entries(TRY_ON_ROLE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </label>
+
+              {role !== "top" && <label className="try-on-field">
+                <span>Base top</span>
+                <select value={baseTopId} onChange={(event) => setBaseTopId(event.target.value)} disabled={busy}>
+                  <option value="">Choose a top</option>
+                  {tops.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>}
+
+              {role !== "bottom" && <label className="try-on-field">
+                <span>Base bottom</span>
+                <select value={baseBottomId} onChange={(event) => setBaseBottomId(event.target.value)} disabled={busy}>
+                  <option value="">Choose trousers</option>
+                  {bottoms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>}
+
+              {role !== "outer-layer" && <label className="try-on-field">
+                <span>Optional outer layer</span>
+                <select value={baseOuterId} onChange={(event) => setBaseOuterId(event.target.value)} disabled={busy}>
+                  <option value="">None</option>
+                  {outerLayers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>}
+
+              <label className="try-on-field">
+                <span>Reference pose</span>
+                <select value={referenceIndex} onChange={(event) => setReferenceIndex(event.target.value)} disabled={busy}>
+                  <option value="auto">Auto-rotate references</option>
+                  {references.map((reference) => <option key={reference.index} value={reference.index}>{reference.name}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <p className="try-on-note">The candidate image is used only for this visualization and is not added to your wardrobe automatically. Add more identity photos to <code>data/model-references/</code> to vary poses across results; the original <code>data/model-reference.png</code> remains the fallback.</p>
+            {error && <p className="try-on-error" role="alert">{error}</p>}
+            <div className="try-on-actions">
+              <button className="secondary-button" type="button" onClick={onClose} disabled={busy}>Cancel</button>
+              <button className="primary-button" type="submit" disabled={busy || !candidateImage}>{busy ? "Generating…" : "See it on me"}</button>
+            </div>
+          </form>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export function App() {
   const [items, setItems] = useState([]);
   const [outfits, setOutfits] = useState([]);
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [activeOutfitModal, setActiveOutfitModal] = useState(null);
+  const [tryOnOpen, setTryOnOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -617,6 +827,9 @@ export function App() {
                 ? `${outfits.length} ${outfits.length === 1 ? "outfit look" : "outfit looks"}`
                 : `${items.length} ${items.length === 1 ? "piece" : "pieces"}`}
             </p>
+            <button className="try-on-launch" type="button" onClick={() => setTryOnOpen(true)}>
+              Try before you buy
+            </button>
           </div>
           <nav className="category-nav" aria-label="Filter wardrobe by item type">
             {TYPES.map((type) => (
@@ -812,6 +1025,7 @@ export function App() {
           </div>
         </div>
       )}
+      {tryOnOpen && <TryOnModal items={items} onClose={() => setTryOnOpen(false)} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );

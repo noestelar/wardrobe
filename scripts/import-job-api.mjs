@@ -7,6 +7,9 @@ import sharp from "sharp";
 const API_ROOT = "/api/import/jobs";
 const ASSET_ROOT = "/api/import/assets";
 const LIBRARY_ASSET_ROOT = "/api/import/library";
+const TRY_ON_ROOT = "/api/import/try-on";
+const TRY_ON_ASSET_ROOT = "/api/import/try-on/assets";
+const MODEL_REFERENCES_DIR = "data/model-references";
 const STAGES = new Set(["crop", "garment", "modeled"]);
 const DECISIONS = new Set(["approve", "reject"]);
 const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"]);
@@ -79,6 +82,46 @@ function normalizeBoundingBox(value = {}) {
 async function normalizeImage(bytes) {
   return sharp(bytes).rotate().toColorspace("srgb").png().toBuffer();
 }
+
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+
+async function listModelReferencePaths(root, configuredReference) {
+  const paths = [];
+  const primary = path.resolve(root, configuredReference || "data/model-reference.png");
+  try {
+    if ((await stat(primary)).isFile()) paths.push(primary);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  const directory = path.resolve(root, MODEL_REFERENCES_DIR);
+  try {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isFile() || !IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+      const candidate = path.join(directory, entry.name);
+      if (!paths.includes(candidate)) paths.push(candidate);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  return paths;
+}
+
+function selectModelReference(paths, selector, seed = "") {
+  if (!paths.length) return null;
+  const numeric = Number(selector);
+  if (Number.isInteger(numeric) && numeric >= 0 && numeric < paths.length) return paths[numeric];
+  let hash = 0;
+  for (const character of String(seed)) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
+  return paths[hash % paths.length];
+}
+
+function relativeModelReference(root, file) {
+  return path.relative(root, file).split(path.sep).join("/");
+}
+
 
 async function cropDetectedItem(bytes, boundingBox) {
   const normalized = await normalizeImage(bytes);
@@ -497,6 +540,38 @@ async function openAIEdit({ key, baseUrl, model, prompt, images, size, backgroun
   return Buffer.from(encoded, "base64");
 }
 
+const TRY_ON_ROLES = new Set(["top", "bottom", "outer-layer", "shoes-or-accessory"]);
+
+function buildTryOnPrompt(role, baseItems = []) {
+  const roleLabel = {
+    top: "top or shirt",
+    bottom: "bottom or trousers",
+    "outer-layer": "outer layer or jacket",
+    "shoes-or-accessory": "shoes or accessory",
+  }[role] || "clothing item";
+  const baseDescription = baseItems.length
+    ? baseItems.map((item, index) => `Image ${index + 3}: exact existing wardrobe piece: ${item.name} (${item.part}).`).join("\\n")
+    : "No existing wardrobe pieces were selected; complete the outfit with understated neutral basics only where absolutely necessary.";
+
+  return `Use case: virtual try-on / buy decision.
+
+Image 1: identity reference for the exact person to preserve.
+Image 2: candidate ${roleLabel} from a product photo, screenshot, or garment photo. Extract and preserve the exact candidate item; ignore webpage text, models, logos not actually present on the garment, and unrelated background objects.
+${baseDescription}
+
+Primary request: Create a realistic full-body photograph of the person from Image 1 wearing the exact candidate item from Image 2. This is a visualization for deciding whether to buy the item, not a fashion illustration.
+
+Candidate role: ${roleLabel}. If the candidate is a top, keep the selected bottom visible. If it is a bottom, keep the selected top visible. If it is an outer layer, layer it naturally over the selected base outfit. If it is shoes or an accessory, preserve the selected top and bottom and show the candidate clearly.
+
+Identity and body: preserve the person's recognizable face, hair, age, skin tone, natural build, height impression, and body proportions. Do not slim, bulk up, lengthen, shorten, reshape, or beautify the body. Keep the dark textured haircut. Use a relaxed, natural pose with arms away from the torso and feet visible.
+
+Style direction: comfortable, clean, attractive, understated, and aligned with a dark modern casual wardrobe. Prefer realistic relaxed fits over exaggerated oversized or skin-tight styling. Keep proportions flattering for a 1.65 m frame with a clean waist and minimal bunching at the ankles.
+
+Garment fidelity: preserve the candidate's exact color, material, texture, silhouette, length, fit, seams, closures, graphics, logos, and distinctive details. Keep every selected existing wardrobe piece recognizable and unchanged. Do not invent pockets, zippers, buttons, openings, patterns, or branding.
+
+Photography: authentic smartphone or mirrorless fashion photograph, natural skin texture, believable fabric folds, ordinary real-world setting, soft directional light, subtle imperfections, no glossy AI polish, no catalog cutout look, no text, no watermark, no extra people, and no unselected statement garments.`;
+}
+
 async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
   const response = await fetch(`${baseUrl}/responses`, {
     method: "POST",
@@ -524,6 +599,7 @@ export function wardrobeImportApi(options = {}) {
   let jobsDir;
   let importedFile;
   let libraryAssetDir;
+  let tryOnDir;
   const running = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
   const apiBaseUrl = () => setting("OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
@@ -533,19 +609,15 @@ export function wardrobeImportApi(options = {}) {
     const hasCodexAuth = Boolean(codexAuth?.token);
     const hasApiKey = Boolean(setting("OPENAI_API_KEY").trim()) || hasCodexAuth;
     const referenceSetting = setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png");
-    const referencePath = path.resolve(root, referenceSetting);
-    let hasModelReference = false;
-    try {
-      hasModelReference = (await stat(referencePath)).isFile();
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
+    const referencePaths = await listModelReferencePaths(root, referenceSetting);
+    const hasModelReference = referencePaths.length > 0;
     return {
       ready: hasApiKey && hasModelReference,
       hasApiKey,
       hasCodexAuth,
       hasModelReference,
       modelReference: referenceSetting,
+      modelReferences: referencePaths.map((file, index) => ({ index, name: relativeModelReference(root, file) })),
     };
   }
 
@@ -563,6 +635,68 @@ export function wardrobeImportApi(options = {}) {
   async function loadImported() {
     try { return JSON.parse(await readFile(importedFile, "utf8")); }
     catch (error) { if (error.code === "ENOENT") return []; throw error; }
+  }
+
+  async function loadLibraryReference(record) {
+    if (!record || typeof record.image !== "string") throw Object.assign(new Error("Invalid wardrobe piece"), { status: 400 });
+    const filename = path.basename(new URL(record.image, "http://localhost").pathname);
+    const file = path.join(libraryAssetDir, filename);
+    await stat(file);
+    return { data: await readFile(file), mime: "image/png", name: record.name || filename };
+  }
+
+  async function generateTryOn(input) {
+    const setup = await setupStatus();
+    if (!setup.ready) {
+      throw Object.assign(new Error("Try-on setup requires Codex/OpenAI access and at least one model reference image"), { status: 503 });
+    }
+
+    const candidate = decodeImage(input);
+    const candidateData = await normalizeImage(candidate.data);
+    const role = typeof input.role === "string" && TRY_ON_ROLES.has(input.role) ? input.role : "top";
+    const records = await loadImported();
+    const requestedIds = Array.isArray(input.baseItemIds)
+      ? [...new Set(input.baseItemIds.filter((id) => typeof id === "string"))].slice(0, 4)
+      : [];
+    const baseItems = [];
+    for (const id of requestedIds) {
+      const record = records.find((item) => item.id === id);
+      if (!record) throw Object.assign(new Error(`Wardrobe piece not found: ${id}`), { status: 400 });
+      baseItems.push({ ...record, reference: await loadLibraryReference(record) });
+    }
+
+    const requestId = randomUUID();
+    const referencePaths = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"));
+    const referenceSelector = input.referenceIndex === "auto" || input.referenceIndex === "" ? null : input.referenceIndex;
+    const referencePath = selectModelReference(referencePaths, referenceSelector, requestId);
+    if (!referencePath) throw Object.assign(new Error("No model reference images found"), { status: 503 });
+    const modelData = await readFile(referencePath);
+    const model = { data: modelData, mime: "image/png", name: path.basename(referencePath) };
+    const baseReferences = baseItems.map((item) => item.reference);
+    const prompt = buildTryOnPrompt(role, baseItems);
+    const images = [model, { data: candidateData, mime: "image/png", name: "candidate.png" }, ...baseReferences];
+    const codexAuth = await getCodexAuth();
+    const key = setting("OPENAI_API_KEY");
+    let output;
+    if (codexAuth?.token) {
+      output = await codexEdit({ token: codexAuth.token, acctId: codexAuth.acctId, prompt, images, size: "1024x1536" });
+    } else if (key) {
+      output = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2.5")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1024x1536", images, prompt });
+    } else {
+      throw Object.assign(new Error("Neither Codex auth nor OPENAI_API_KEY is configured"), { status: 503 });
+    }
+
+    await mkdir(tryOnDir, { recursive: true });
+    const filename = `${requestId}.png`;
+    await writeFile(path.join(tryOnDir, filename), output);
+    return {
+      id: requestId,
+      image: `${TRY_ON_ASSET_ROOT}/${filename}`,
+      role,
+      reference: relativeModelReference(root, referencePath),
+      baseItems: baseItems.map(({ id, name, part }) => ({ id, name, part })),
+      createdAt: new Date().toISOString(),
+    };
   }
 
   async function persistImported(job, includeModeled = false) {
@@ -641,7 +775,9 @@ export function wardrobeImportApi(options = {}) {
             : `garment-${current.stages.garment.attempts}.png`;
           const garmentFile = path.join(dir, garmentName);
           const garment = { data: await readFile(garmentFile), mime: "image/png", name: "garment.png" };
-          const modelPath = path.resolve(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"));
+          const modelReferences = await listModelReferencePaths(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"));
+          const modelPath = selectModelReference(modelReferences, null, current.id);
+          if (!modelPath) throw new Error("No model reference images found. Add data/model-reference.png or images to data/model-references/.");
           let modelData;
           try {
             modelData = await readFile(modelPath);
@@ -689,6 +825,19 @@ export function wardrobeImportApi(options = {}) {
       }
       if (url.pathname === "/api/import/config" && req.method === "GET") {
         return json(res, 200, await setupStatus());
+      }
+      if (url.pathname === TRY_ON_ROOT && req.method === "POST") {
+        const input = await body(req);
+        if (!input || typeof input !== "object" || Array.isArray(input)) throw Object.assign(new Error("Try-on request must be an object"), { status: 400 });
+        return json(res, 201, await generateTryOn(input));
+      }
+      const tryOnAssetMatch = url.pathname.match(/^\/api\/import\/try-on\/assets\/([a-f0-9-]{36}\.png)$/i);
+      if (tryOnAssetMatch && req.method === "GET") {
+        const file = path.join(tryOnDir, path.basename(tryOnAssetMatch[1]));
+        await stat(file);
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "no-store");
+        return res.end(await readFile(file));
       }
       const wardrobeDeleteMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})$/i);
       if (wardrobeDeleteMatch && req.method === "DELETE") {
@@ -883,11 +1032,15 @@ export function wardrobeImportApi(options = {}) {
     async configResolved(config) {
       root = config.root;
       const dataDir = path.resolve(root, setting("WARDROBE_DATA_DIR", "data"));
+      const modelReferencesDir = path.resolve(root, MODEL_REFERENCES_DIR);
       jobsDir = path.join(dataDir, "jobs");
       importedFile = path.join(dataDir, "library.json");
       libraryAssetDir = path.join(dataDir, "imported");
+      tryOnDir = path.join(dataDir, "try-on");
       await mkdir(jobsDir, { recursive: true });
       await mkdir(libraryAssetDir, { recursive: true });
+      await mkdir(tryOnDir, { recursive: true });
+      await mkdir(modelReferencesDir, { recursive: true });
       const ids = await readdir(jobsDir).catch(() => []);
       for (const id of ids) {
         const job = await loadJob(id);
