@@ -742,14 +742,36 @@ export function App() {
                 <X size={20} weight="bold" />
               </button>
             </div>
-            <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", maxHeight: "35vh" }}>
+            <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto", maxHeight: "38vh" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px" }}>
                 <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#f4f0e8" }}>{activeOutfitModal.name}</h2>
                 <span style={{ fontSize: "0.8rem", color: "#8a909a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {(activeOutfitModal.occasion || []).join(" • ")}
                 </span>
               </div>
-              <p style={{ margin: 0, fontSize: "0.9rem", color: "#b4b9c2", lineHeight: 1.45 }}>{activeOutfitModal.reason}</p>
+
+              {activeOutfitModal.bestFor && (
+                <div style={{ background: "rgba(255, 255, 255, 0.04)", borderLeft: "3px solid #6366f1", borderRadius: "0 8px 8px 0", padding: "10px 14px" }}>
+                  <span style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "#818cf8", fontWeight: 700, display: "block", marginBottom: "4px" }}>
+                    ⭐ Mejor Ocasión de Uso
+                  </span>
+                  <p style={{ margin: "0 0 6px 0", fontSize: "0.92rem", fontWeight: 600, color: "#f4f0e8" }}>
+                    {activeOutfitModal.bestFor}
+                  </p>
+                  {activeOutfitModal.why && (
+                    <p style={{ margin: 0, fontSize: "0.84rem", color: "#b4b9c2", lineHeight: 1.4 }}>
+                      {activeOutfitModal.why}
+                    </p>
+                  )}
+                  {activeOutfitModal.stylingTip && (
+                    <p style={{ margin: "6px 0 0 0", fontSize: "0.82rem", color: "#9ca3af", fontStyle: "italic" }}>
+                      💡 <strong>Tip de porte:</strong> {activeOutfitModal.stylingTip}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p style={{ margin: 0, fontSize: "0.88rem", color: "#9ca3af", lineHeight: 1.45 }}>{activeOutfitModal.reason}</p>
 
               {Array.isArray(activeOutfitModal.garmentIds) && activeOutfitModal.garmentIds.length > 0 && (
                 <div style={{ marginTop: "4px", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "12px" }}>
