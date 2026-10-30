@@ -318,3 +318,39 @@
   .import-status.is-processing::before,
   .import-spinner { animation: none !important; }
 }
+
+/* The launcher must never sit above another dialog. */
+.app-shell.has-modal .import-tray { display: none; }
+.import-tray { z-index: 15; }
+.import-fields,
+.import-field,
+.import-popover__header > div { min-width: 0; }
+.import-color-row { grid-template-columns: 52px minmax(0, 1fr); }
+.import-status,
+.import-card__detail,
+.import-progress__meta,
+.import-drop-target p { overflow-wrap: anywhere; }
+.import-status::before { flex-shrink: 0; }
+.import-popover { overscroll-behavior-y: contain; }
+
+@media (max-width: 640px) {
+  .import-popover__header {
+    position: sticky;
+    top: -20px;
+    z-index: 2;
+    margin-inline: -16px;
+    padding: 16px;
+    background: var(--import-paper);
+    border-bottom: 1px solid var(--import-line);
+  }
+  .import-popover__title { font-size: 26px; }
+  .import-button { min-height: 44px; }
+  .import-icon-button,
+  .import-tray__button { flex-basis: 44px; width: 44px; height: 44px; }
+  .import-field input,
+  .import-field select,
+  .import-field textarea { min-height: 44px; font-size: 16px; }
+  .import-card__actions,
+  .import-progress__meta { flex-wrap: wrap; }
+  .import-tray { left: max(12px, env(safe-area-inset-left)); }
+}
