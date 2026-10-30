@@ -158,6 +158,12 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    document.body.classList.add("import-open");
+    return () => document.body.classList.remove("import-open");
+  }, [open]);
+
   const refresh = useCallback(async (id) => {
     try {
       const next = await api(`${API}/${id}`);

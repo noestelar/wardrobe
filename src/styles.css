@@ -1118,3 +1118,122 @@ button { font: inherit; }
     box-shadow: inset 3px 0 0 var(--accent), -18px 0 50px rgba(25, 24, 22, .08);
   }
 }
+
+/* Constrain outfit content independently of image dimensions and long metadata. */
+.item-card { min-width: 0; cursor: pointer; }
+.item-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.item-card-media { aspect-ratio: 4 / 5; overflow: hidden; }
+.item-card-media img { display: block; }
+.item-card-meta { overflow-wrap: anywhere; }
+.item-card-meta h3 { margin: 12px 0 6px; font-size: 15px; font-weight: 550; }
+.item-card-meta p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.viewer-close-row { display: contents; }
+body.import-open,
+body.outfit-open { overflow: hidden; }
+.viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, .85);
+  backdrop-filter: blur(8px);
+}
+.outfit-modal {
+  position: relative;
+  width: min(100%, 820px);
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 16px;
+  background: #16181d;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .8);
+}
+.outfit-modal-media { position: relative; min-height: 0; display: flex; justify-content: center; background: #0d0f12; }
+.outfit-modal-media img { display: block; max-width: 100%; max-height: 65dvh; object-fit: contain; }
+.outfit-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .65);
+  color: #fff;
+  cursor: pointer;
+}
+.outfit-modal-details { min-height: 0; flex: 0 1 auto; display: flex; flex-direction: column; gap: 14px; max-height: 38dvh; overflow: auto; overflow-wrap: anywhere; padding: 18px 24px; }
+.outfit-modal-details * { min-width: 0; max-width: 100%; }
+
+@media (max-width: 860px) {
+  .gallery-header { position: sticky; top: 0; z-index: 10; background: var(--paper); }
+  .category-nav { overscroll-behavior-x: contain; }
+  .gallery-grid { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+  .viewer { overscroll-behavior-y: contain; }
+  .viewer-close-row {
+    position: sticky;
+    top: 0;
+    z-index: 9;
+    display: flex;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+    background: var(--paper);
+  }
+  .viewer-close-row .viewer-icon-close { position: static; width: 44px; height: 44px; }
+  .has-modeled-image .viewer-close-row { padding: env(safe-area-inset-top) 16px 0; }
+  .viewer-heading h2,
+  .detail-tags,
+  .editable-tag,
+  .status,
+  .try-on-note,
+  .try-on-error { overflow-wrap: anywhere; }
+  .viewer-heading > div,
+  .try-on-header > div,
+  .try-on-field { min-width: 0; }
+  .palette,
+  .viewer-actions { flex-wrap: wrap; }
+  .editable-tag { max-width: 100%; }
+  .editable-tag button { flex: 0 0 44px; }
+  .field input,
+  .field select,
+  .tag-input-row input,
+  .try-on-field select { min-height: 44px; font-size: 16px; }
+  .primary-button,
+  .secondary-button,
+  .delete-button,
+  .sample-button,
+  .add-secondary-button,
+  .color-slot-heading button,
+  .try-on-launch { min-height: 44px; }
+  .palette button,
+  .editable-tag button,
+  .selected-color-control input,
+  .try-on-close { width: 44px; height: 44px; }
+  .selected-color-control input { flex-basis: 44px; }
+  .tag-input-row button { flex: 0 0 44px; }
+  .try-on-header { position: sticky; top: 0; z-index: 2; background: var(--paper); }
+  .try-on-modal { max-height: calc(100dvh - 48px); overscroll-behavior-y: contain; }
+  .viewer-actions { position: sticky; bottom: 0; padding-block: 10px; background: var(--paper); }
+}
+
+@media (max-width: 520px) {
+  .gallery-header { padding-top: max(12px, env(safe-area-inset-top)); }
+  .gallery-meta-row { gap: 12px; }
+  .category-nav { margin-top: 12px; }
+  .has-modeled-image .viewer-details.editing { padding-bottom: max(30px, env(safe-area-inset-bottom)); }
+  .try-on-modal { max-height: 100dvh; }
+  .try-on-header { gap: 12px; padding-top: max(12px, env(safe-area-inset-top)); }
+  .try-on-header p:not(.try-on-eyebrow) { font-size: 12px; }
+  .try-on-header h2 { font-size: 24px; }
+  .viewer-backdrop { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .outfit-modal { max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom))); }
+  .outfit-modal-media img { max-height: 54dvh; }
+  .outfit-modal-details { padding: 16px; }
+}

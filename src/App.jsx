@@ -471,9 +471,11 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
     <div className="viewer-entry">
     <aside className={`viewer editing${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="Selected wardrobe item">
+      <div className="viewer-close-row">
       <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="Close viewer" ref={closeButtonRef}>
         <X size={24} weight="light" aria-hidden="true" />
       </button>
+      </div>
 
       {hasModeledImage ? (
         <div className="modeled-hero">
@@ -813,6 +815,19 @@ export function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!activeOutfitModal) return undefined;
+    document.body.classList.add("outfit-open");
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setActiveOutfitModal(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.classList.remove("outfit-open");
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeOutfitModal]);
+
   const selectedItem = items.find((item) => item.id === selectedId) || null;
 
   const visibleItems = useMemo(() => {
@@ -863,7 +878,7 @@ export function App() {
   }, []);
 
   return (
-    <div className={`app-shell${selectedItem ? " has-selection" : ""}`}>
+    <div className={`app-shell${selectedItem ? " has-selection" : ""}${selectedItem || activeOutfitModal || tryOnOpen ? " has-modal" : ""}`}>
       <main className="gallery-pane">
         <header className="gallery-header">
           <div className="gallery-meta-row">
@@ -901,7 +916,15 @@ export function App() {
               <article
                 key={outfit.id}
                 className="item-card"
-                style={{ cursor: "pointer" }}
+                role="button"
+                tabIndex={0}
+                aria-label={`View ${outfit.name}`}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setActiveOutfitModal(outfit);
+                  }
+                }}
                 onClick={() => setActiveOutfitModal(outfit)}
               >
                 <div className="item-card-media" style={{ background: "#222" }}>
@@ -940,69 +963,34 @@ export function App() {
         <div
           className="viewer-backdrop"
           onClick={() => setActiveOutfitModal(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0, 0, 0, 0.85)",
-            backdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
-          }}
+
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              position: "relative",
-              maxWidth: "min(92vw, 820px)",
-              maxHeight: "92vh",
-              display: "flex",
-              flexDirection: "column",
-              background: "#16181d",
-              borderRadius: "16px",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              overflow: "hidden",
-              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.8)",
-            }}
+            className="outfit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="outfit-title"
           >
-            <div style={{ position: "relative", background: "#0d0f12", flex: "1 1 auto", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+            <div className="outfit-modal-media">
               <img
                 src={`/api/import/${activeOutfitModal.image}`}
                 alt={activeOutfitModal.name}
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "75vh",
-                  objectFit: "contain",
-                  display: "block",
-                }}
+
               />
               <button
                 type="button"
                 onClick={() => setActiveOutfitModal(null)}
-                style={{
-                  position: "absolute",
-                  top: "16px",
-                  right: "16px",
-                  background: "rgba(0, 0, 0, 0.65)",
-                  border: "1px solid rgba(255, 255, 255, 0.2)",
-                  color: "#fff",
-                  borderRadius: "50%",
-                  width: "36px",
-                  height: "36px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                }}
+                className="outfit-modal-close"
+                aria-label="Close outfit"
+                autoFocus
               >
                 <X size={20} weight="bold" />
               </button>
             </div>
-            <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto", maxHeight: "38vh" }}>
+            <div className="outfit-modal-details">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px" }}>
-                <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#f4f0e8" }}>{activeOutfitModal.name}</h2>
+                <h2 id="outfit-title" style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#f4f0e8" }}>{activeOutfitModal.name}</h2>
                 <span style={{ fontSize: "0.8rem", color: "#8a909a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {(activeOutfitModal.occasion || []).join(" • ")}
                 </span>
